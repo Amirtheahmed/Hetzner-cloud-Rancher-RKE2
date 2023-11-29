@@ -1,4 +1,4 @@
-# Infrastructure Repository
+# Rancher RKE2 (K8s) Deployed on Hetzner Cloud using Ansible and Terraform
 Author: Amir Ahmed | amirsalihdev@gmail.com, amirtheahmed@gmail.com
 ## Overview
 This repository stores and maintains all Infrastructure as Code (IaC) scripts used to set up the necessary infrastructures. It includes scripts for setting up scalable Kubernetes (K8s) clusters using Rancher on Hetzner Cloud, deployment of various applications, and monitoring configurations.
