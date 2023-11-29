@@ -1,0 +1,112 @@
+- name: Configure Traefik, ingress & TLS/SSL on master node
+  hosts: masters
+  become: yes
+  vars:
+    ansible_user: root
+    ansible_ssh_private_key_file: <path-to-your-master-node-ssh-key-private-file>
+    ansible_ssh_extra_args: '-o StrictHostKeyChecking=no'
+    node_ip: "{{ hostvars[inventory_hostname]['ansible_private_ip'] }}"
+  vars_prompt:
+    - name: "traefik_username"
+      prompt: "Enter your Traefik username"
+      private: no
+    - name: "traefik_password"
+      prompt: "Enter your Traefik password"
+      private: yes
+
+  tasks:
+    - name: Add Traefik helm repo
+      shell: >
+          helm repo add traefik https://helm.traefik.io/traefik
+
+    - name: Install apache2-utils
+      apt:
+        name: apache2-utils
+        state: present
+        update_cache: yes
+
+    - name: Create Traefik directory
+      file:
+        path: $HOME/Traefik
+        state: directory
+
+    - name: Copy certificates to remote server
+      copy:
+        src: ../Traefik/certs
+        dest: ~/Traefik
+        mode: '0644'
+
+    - name: Delete existing TLS secret if it exists
+      shell: >
+        kubectl delete secret default-cloudflare-tls -n default --ignore-not-found=true
+      ignore_errors: yes
+
+    - name: Create TLS secrets
+      command: >
+        kubectl create secret generic default-cloudflare-tls -n default --from-file=tls.crt=Traefik/certs/default/tls.crt --from-file=tls.key=Traefik/certs/default/tls.key
+      register: create_secret_result
+      until: create_secret_result.rc == 0
+      retries: 5
+      delay: 10
+
+    - name: Delete existing store if it exists
+      shell: >
+        kubectl delete tlsstore default-cloudflare-tls -n default --ignore-not-found=true
+      ignore_errors: yes
+
+    - name: Copy Traefik store to remote server
+      copy:
+        src: ../Traefik/traefik-store.yaml
+        dest: ~/Traefik/traefik-store.yaml
+        mode: '0644'
+
+    - name: Copy values.yaml to remote server
+      copy:
+        src: ../Traefik/values.yaml
+        dest: ~/Traefik/values.yaml
+        mode: '0644'
+
+    - name: Install Traefik
+      shell: >
+          helm upgrade --install traefik traefik/traefik -f Traefik/values.yaml --namespace=traefik --create-namespace
+
+    - name: Copy ingress-route to remote server
+      copy:
+        src: ../Traefik/ingress-route.yaml
+        dest: ~/Traefik/ingress-route.yaml
+        mode: '0644'
+
+    - name: Create Traefik stores
+      shell: >
+        kubectl apply -f Traefik/traefik-store.yaml
+
+    - name: Generate htpasswd
+      become: false
+      local_action: command htpasswd -nb {{ traefik_username }} {{ traefik_password }}
+      register: htpasswd_output
+      no_log: True
+
+    - name: Delete existing secret for basic auth
+      shell: >
+        kubectl delete secret traefiksecret -n traefik --ignore-not-found=true
+      ignore_errors: yes
+
+    - name: Create secret for basic auth
+      shell: >
+        kubectl create secret generic traefiksecret --from-literal=auth='{{ htpasswd_output.stdout }}' -n traefik
+      ignore_errors: yes
+
+    - name: Copy auth-middleware.yaml to remote server
+      copy:
+        src: ../Traefik/auth-middleware.yaml
+        dest: ~/Traefik/auth-middleware.yaml
+        mode: '0644'
+
+    - name: Apply middleware
+      shell: >
+        kubectl apply -f ~/Traefik/auth-middleware.yaml
+
+    - name: Create ingress-route
+      shell: >
+        kubectl apply -f Traefik/ingress-route.yaml
+

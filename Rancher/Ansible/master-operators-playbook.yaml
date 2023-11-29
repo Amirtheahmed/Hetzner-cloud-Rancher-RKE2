@@ -1,0 +1,29 @@
+- name: Configure different operators on the cluster such as MariaDB, Redis, etc.
+  hosts: masters
+  become: yes
+  vars:
+    ansible_user: root
+    ansible_ssh_private_key_file: <path-to-your-master-node-ssh-key-private-file>
+    ansible_ssh_extra_args: '-o StrictHostKeyChecking=no'
+    node_ip: "{{ hostvars[inventory_hostname]['ansible_private_ip'] }}"
+  tasks:
+    - name: Add mariadb repo
+      shell: >
+        helm repo add mariadb-operator https://mariadb-operator.github.io/mariadb-operator
+
+    - name: Add Prometheus repo
+      shell: |
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts &&
+        helm repo update
+
+    - name: Update repos
+      shell: >
+        helm repo update
+
+    - name: Install MariaDB Operator
+      shell: >
+        helm upgrade --install mariadb-operator mariadb-operator/mariadb-operator
+
+    - name: Install RabbitMQ Cluster Operator
+      shell: >
+        kubectl apply -f "https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml"

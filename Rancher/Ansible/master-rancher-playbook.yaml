@@ -1,0 +1,41 @@
+- name: Configure rancher, ingress & TLS/SSL on master node
+  hosts: masters
+  become: yes
+  vars:
+    ansible_user: root
+    ansible_ssh_private_key_file: <path-to-your-master-node-ssh-key-private-file>
+    ansible_ssh_extra_args: '-o StrictHostKeyChecking=no'
+    node_ip: "{{ hostvars[inventory_hostname]['ansible_private_ip'] }}"
+  tasks:
+    - name: Add rancher repo
+      shell: >
+        helm repo add rancher-stable https://releases.rancher.com/server-charts/stable 
+
+    - name: Create rancher directory
+      file:
+        path: $HOME/Rancher
+        state: directory
+
+    - name: Copy values.yaml to remote server
+      copy:
+        src: ../Rancher/values.yaml
+        dest: $HOME/Rancher/values.yaml
+        mode: '0644'
+
+    - name: Install Rancher
+      shell: >
+        helm upgrade --install rancher rancher-stable/rancher  --namespace cattle-system -f Rancher/values.yaml --create-namespace --set global.cattle.psp.enabled=false
+
+    - name: Copy ingress-route to remote server
+      copy:
+        src: ../Rancher/ingress-route.yaml
+        dest: ~/Rancher/ingress-route.yaml
+        mode: '0644'
+
+    - name: Create ingress-route
+      shell: >
+        kubectl apply -f Rancher/ingress-route.yaml --namespace cattle-system
+
+    - name: Install Hetzner CSI driver
+      shell: >
+        kubectl apply -f https://raw.githubusercontent.com/hetznercloud/csi-driver/v2.3.2/deploy/kubernetes/hcloud-csi.yml

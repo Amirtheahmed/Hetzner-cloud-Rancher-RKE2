@@ -1,0 +1,41 @@
+- name: Configure worker nodes
+  hosts: workers
+  become: yes
+  vars:
+    node_ip: "{{ hostvars[inventory_hostname]['ansible_private_ip'] }}"
+    first_master: "master-1"  # Replace with the name of your first master node
+    master_node_token_file: "./{{ first_master }}_node_token"
+    master_node_ip: "{{ hostvars[first_master]['ansible_private_ip'] }}"
+    ansible_user: root
+    ansible_ssh_private_key_file: <path-to-your-worker-node-ssh-key-private-file>
+    ansible_ssh_extra_args: '-o StrictHostKeyChecking=no'
+  tasks:
+    - name: Update and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: Download and install RKE2-Agent
+      shell: curl -sfL https://get.rke2.io | INSTALL_RKE2_TYPE="agent" sh -
+
+    - name: Create configuration directory for Rancher
+      file:
+        path: /etc/rancher/rke2
+        state: directory
+
+    - name: Set up rancher configuration
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+        content: |
+          server: https://{{ master_node_ip }}:9345
+          token: "{{ lookup('file', master_node_token_file) }}"
+          node-ip: {{ node_ip }}
+          cloud-provider-name: "external"
+          kube-apiserver-arg:
+            - kubelet-preferred-address-types=InternalIP
+
+    - name: Enable and start rke2-agent service
+      systemd:
+        name: rke2-agent
+        enabled: yes
+        state: started

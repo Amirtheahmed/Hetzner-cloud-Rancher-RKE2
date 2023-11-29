@@ -1,0 +1,70 @@
+- name: Configure master nodes
+  hosts: masters
+  become: yes
+  vars:
+    ansible_user: root
+    ansible_ssh_private_key_file: <path-to-your-master-node-ssh-key-private-file>
+    ansible_ssh_extra_args: '-o StrictHostKeyChecking=no'
+    node_ip: "{{ hostvars[inventory_hostname]['ansible_private_ip'] }}"
+    node_name: "{{ inventory_hostname }}"
+    first_master: "master-1"  # Replace with the name of your first master node
+  tasks:
+    - name: Update and upgrade packages
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: Download and install RKE2-Server
+      shell: curl -sfL https://get.rke2.io | sh -
+
+    - name: Create configuration directory for RKE2
+      file:
+        path: /etc/rancher/rke2
+        state: directory
+
+    - name: Set up RKE2 configuration
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+        content: |
+          write-kubeconfig-mode: "0644"
+          node-name: {{ node_name }}
+          node-ip: {{ node_ip }}
+          cloud-provider-name: external
+          cluster-cidr: 10.244.0.0/16
+          kube-proxy-arg: "metrics-bind-address=0.0.0.0"
+          disable:
+            - cloud-controller
+            - rke2-ingress-nginx
+            - rke2-canal
+          tls-san:
+            - {{ node_ip }}
+            - {{ node_name }}
+          cni: cilium
+          {% if node_name != first_master %}
+          server: https://{{ hostvars[first_master]['ansible_private_ip'] }}:9345
+          token: "{{ lookup('file', './' + first_master + '_node_token') }}"
+          {% endif %}
+
+    - name: Enable and start rke2-server service
+      systemd:
+        name: rke2-server
+        enabled: yes
+        state: started
+
+    - name: Create .kube directory
+      file:
+        path: $HOME/.kube
+        state: directory
+
+    - name: Copy kube config
+      command: cp /etc/rancher/rke2/rke2.yaml $HOME/.kube/config
+
+    - name: Fetch node token
+      fetch:
+        src: /var/lib/rancher/rke2/server/node-token
+        dest: "./{{ inventory_hostname }}_node_token"
+        flat: yes
+
+    - name: Install helm
+      shell: >
+        curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash

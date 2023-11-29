@@ -1,0 +1,52 @@
+- name: Configure Hetzner CCM on master nodes
+  hosts: masters
+  become: yes
+  vars:
+    ansible_user: root
+    ansible_ssh_private_key_file: <path-to-your-master-node-ssh-key-private-file>
+    ansible_ssh_extra_args: '-o StrictHostKeyChecking=no'
+  vars_files:
+    - ./secret.yml
+  tasks:
+    - name: Install kubectl
+      get_url:
+        url: https://storage.googleapis.com/kubernetes-release/release/v1.22.0/bin/linux/amd64/kubectl
+        dest: /usr/local/bin/kubectl
+        mode: '0755'  # Set the correct executable permissions
+      become: yes
+
+    - name: Ensure kubectl is executable
+      file:
+        path: /usr/local/bin/kubectl
+        mode: '0755'
+      become: yes
+
+    - name: Set secure permissions on kube config
+      file:
+        path: "/root/.kube/config"
+        mode: '0600'
+      become: yes
+
+    - name: Create kubectl config directory
+      file:
+        path: "/root/.kube"
+        state: directory
+      become: yes
+
+    - name: Check if secret for Hetzner API token already exists
+      shell: >
+        kubectl -n kube-system get secret hcloud
+      register: secret_check
+      ignore_errors: yes
+      become: yes
+
+    - name: Create secret for Hetzner API token
+      shell: >
+        kubectl -n kube-system create secret generic hcloud --from-literal=token={{ hetzner_api_token }} --from-literal=network=vnet
+      when: secret_check.rc != 0
+      become: yes
+
+    - name: Install Hetzner CCM with networks
+      shell: >
+        kubectl apply -f https://github.com/hetznercloud/hcloud-cloud-controller-manager/releases/latest/download/ccm-networks.yaml
+      become: yes

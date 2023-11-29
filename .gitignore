@@ -1,0 +1,24 @@
+*.idea
+
+# ignore all .tfvars and .tfvars.json files inside all directories
+**/*.tfvars
+**/*.tfvars.json
+
+# ignore all secrets.yaml files inside all directories
+**/secrets.yaml
+**/secret.yml
+**/*secret*.yaml
+
+# ignore rancher node token files
+**/*_node_token*
+
+# ignore tls.key and tls.crt files inside all directories
+**/tls.key
+**/tls.crt
+
+# ignore regcred.yaml files inside all directories
+**/regcred.yaml
+
+# ignore all .terraform directories inside all directories
+**/.terraform
+
